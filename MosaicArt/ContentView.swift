@@ -10,7 +10,10 @@ struct ContentView: View {
     @State private var blue: Double = 0.0
     @State private var selectedColorGroup: ColorGroup = .monochrome
     @State private var xTiles: Int = 200
+//    @State private var xTiles: Int = 1
     @State private var yTiles: Int = 200
+//    @State private var yTiles: Int = 1
+    @State private var isLoading: Bool = false // Loading state
 
     enum ColorGroup: String, CaseIterable, Identifiable {
         case analogous = "analogous"
@@ -21,16 +24,17 @@ struct ContentView: View {
         var id: String { self.rawValue }
     }
 
-    
     var body: some View {
         VStack {
-            Text(mosaic?.albumName ?? "Mosaic Constructor")
+            Text("\(mosaic?.albumName ?? "Mosaic Constructor") by \(mosaic?.artistName ?? "")")
                 .bold()
                 .font(.largeTitle)
                 .padding(.top)
-                
-
-            if let mosaicUrl = mosaic?.mosaicUrl, let url = URL(string: mosaicUrl) {
+            
+            if isLoading {
+                ProgressView() // Show loading indicator
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let mosaicUrl = mosaic?.mosaicUrl, let url = URL(string: mosaicUrl) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
@@ -39,7 +43,8 @@ struct ContentView: View {
                         image
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .clipShape(Circle())
+                            .clipShape(Rectangle())
+                            .border(Color.black, width: 2) // Frame the image
                     case .failure:
                         Image(systemName: "xmark.circle")
                     @unknown default:
@@ -48,74 +53,64 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-
-//            HStack {
-//                Image(systemName: "photo.on.rectangle.angled")
-//                    .resizable()
-//                    .scaledToFit()
-//                    .frame(width: 50, height: 50)
-//                    .padding()
-//                
-//                Text(mosaic?.mosaicUrl ?? "Create your own mosaic!")
-//                    .multilineTextAlignment(.center)
-//            }
-
+            
             TextField("Enter album name", text: $albumName)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding()  
+                .padding()
             TextField("Enter artist name", text: $artistName)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding()
+                .padding(.horizontal)
+                .padding(.bottom)
             Text("Adjust RGB Colors")
-                            .font(.headline)
-                        
-                        HStack {
-                            Text("Red")
-                            Slider(value: $red, in: 0...255, step: 1)
-                            Text("\(Int(red))")
-                        }
-                        
-                        HStack {
-                            Text("Green")
-                            Slider(value: $green, in: 0...255, step: 1)
-                            Text("\(Int(green))")
-                        }
-                        
-                        HStack {
-                            Text("Blue")
-                            Slider(value: $blue, in: 0...255, step: 1)
-                            Text("\(Int(blue))")
-                        }
-                        
-                        Color(red: red/255, green: green/255, blue: blue/255)
-                            .frame(width: 50, height: 50)
-                            .cornerRadius(10)
-                            .padding()
+                .font(.headline)
+            
+            HStack {
+                Text("Red")
+                Slider(value: $red, in: 0...255, step: 1)
+                Text("\(Int(red))")
+            }
+            
+            HStack {
+                Text("Green")
+                Slider(value: $green, in: 0...255, step: 1)
+                Text("\(Int(green))")
+            }
+            
+            HStack {
+                Text("Blue")
+                Slider(value: $blue, in: 0...255, step: 1)
+                Text("\(Int(blue))")
+            }
+            
+            Color(red: red/255, green: green/255, blue: blue/255)
+                .frame(width: 50, height: 50)
+                .cornerRadius(10)
+                .padding(.horizontal)
             
             Picker("Color Group", selection: $selectedColorGroup) {
-                           ForEach(ColorGroup.allCases) { group in
-                               Text(group.rawValue).tag(group)
-                           }
-                       }
-                       .pickerStyle(MenuPickerStyle())
-                       .padding()
+                ForEach(ColorGroup.allCases) { group in
+                    Text(group.rawValue).tag(group)
+                }
+            }
+            .pickerStyle(MenuPickerStyle())
+            .padding()
+            
             HStack {
-                            Text("xTiles")
-                            Stepper(value: $xTiles, in: 1...500, step: 10) {
-                                Text("\(xTiles)")
-                            }
-                        }
-                        .padding()
+                Text("xTiles")
+                Stepper(value: $xTiles, in: 1...500, step: 10) {
+                    Text("\(xTiles)")
+                }
+            }
+            .padding(.horizontal)
 
-                        HStack {
-                            Text("yTiles")
-                            Stepper(value: $yTiles, in: 1...500, step: 10) {
-                                Text("\(yTiles)")
-                            }
-                        }
-                        .padding()
-        
-
+            HStack {
+                Text("yTiles")
+                Stepper(value: $yTiles, in: 1...500, step: 10) {
+                    Text("\(yTiles)")
+                }
+            }
+            .padding(.horizontal)
+            
             Button("Load Mosaic") {
                 Task {
                     await loadMosaic()
@@ -127,6 +122,7 @@ struct ContentView: View {
     }
     
     func loadMosaic() async {
+        isLoading = true // Start loading
         if mosaic != nil {
             // Reset the mosaic to default state
             mosaic = nil
@@ -134,7 +130,7 @@ struct ContentView: View {
         } else {
             // Load the mosaic as before
             do {
-                mosaic = try await getMosaic(albumName: albumName, artist:artistName, red:red, green:green, blue:blue, colorGroup: selectedColorGroup.id,xTiles:xTiles, yTiles: yTiles)
+                mosaic = try await getMosaic(albumName: albumName, artist: artistName, red: red, green: green, blue: blue, colorGroup: selectedColorGroup.id, xTiles: xTiles, yTiles: yTiles)
             } catch MosaicError.invalidURL {
                 print("Invalid URL")
             } catch MosaicError.invalidData {
@@ -145,31 +141,10 @@ struct ContentView: View {
                 print("Unexpected error: \(error)")
             }
         }
+        isLoading = false // End loading
     }
     
-//    func getMosaic(albumName: String) async throws -> Mosaic {
-//        let endpoint = "http://127.0.0.1:5000/AlbumCoverMosaic?albumName=\(albumName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
-//        
-//        guard let url = URL(string: endpoint) else {
-//            throw MosaicError.invalidURL
-//        }
-//        
-//        let (data, response) = try await URLSession.shared.data(from: url)
-//        
-//        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-//            throw MosaicError.invalidResponse
-//        }
-//        
-//        do {
-//            let decoder = JSONDecoder()
-//            decoder.keyDecodingStrategy = .convertFromSnakeCase
-//            return try decoder.decode(Mosaic.self, from: data)
-//        } catch {
-//            throw MosaicError.invalidData
-//        }
-//    }
-    
-    func getMosaic(albumName: String, artist: String, red: Double, green: Double, blue: Double , colorGroup: String, xTiles: Int, yTiles: Int) async throws -> Mosaic {
+    func getMosaic(albumName: String, artist: String, red: Double, green: Double, blue: Double, colorGroup: String, xTiles: Int, yTiles: Int) async throws -> Mosaic {
         let endpoint = "http://127.0.0.1:5000/AlbumCoverMosaic"
         
         guard let url = URL(string: endpoint) else {
@@ -193,12 +168,15 @@ struct ContentView: View {
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
         
         let (data, response) = try await URLSession.shared.data(for: request)
+        print(data)
         
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw MosaicError.invalidResponse
         }
         
+        
         do {
+            print("enter")
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             return try decoder.decode(Mosaic.self, from: data)
@@ -206,20 +184,12 @@ struct ContentView: View {
             throw MosaicError.invalidData
         }
     }
-    
-    
 }
 
 struct Mosaic: Codable {
     let mosaicUrl: String
-    let albumName: String
-    var artist: String
-    var red: Double
-    var green: Double
-    var blue: Double
-    var colorGroup: String
-    var xTiles: Int
-    var yTiles: Int
+    let albumName: String;
+    let artistName:String;
 }
 
 enum MosaicError: Error {
